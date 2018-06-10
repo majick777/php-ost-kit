@@ -519,8 +519,135 @@ $sample['transaction_list_success'] =
    }
 }';
 
+// ---------------
+// Transfer Create
+// ---------------
+# SUCCESS
+$sample['transfer_create_success'] =
+'{
+  "success": true,
+  "data": {
+    "result_type": "transfer",
+    "transfer": {
+      "id": "265187af-a975-497a-8cdb-c59244a36e61",
+      "from_address": "0xd8f38f893868288fb8408b8Cb9e0cC0061B25e93",
+      "to_address": "0xd2b789293674faEE51bEb2d0338d15401dEbfdE3",
+      "amount": "1",
+      "transaction_hash": null,
+      "timestamp": 1526461384000,
+      "status": "processing",
+      "gas_price": "5000000000",
+      "gas_used": null,
+      "block_number": null,
+      "chain_id": "1409"
+    }
+  }
+}';
+# FAILURE
+$sample['transfer_create_failed'] =
+'{
+  "success": false,
+  "err": {
+    "code": "UNAUTHORIZED",
+    "msg": "We could not authenticate the request. Please review your credentials and authentication method.",
+    "error_data": [
+
+    ],
+    "internal_id": "a_1"
+  }
+}';
+
+// ------------
+// Get Transfer
+// ------------
+# SUCCESS
+$sample['transfer_get_success'] =
+'{
+  "success": true,
+  "data": {
+    "result_type": "transfer",
+    "transfer": {
+        "id": "2c66960e-0380-4f7b-8f41-c344d44ab3d4",
+        "from_address": "0xd8f38f893868288fb8408b8Cb9e0cC0061B25e93",
+        "to_address": "0xd2b789293674faEE51bEb2d0338d15401dEbfdE3",
+        "amount": "1",
+        "transaction_hash": "0x068bd88d9ac7818552232fff7d9be5069c9078f8402cc50d352cbb69bde02ed1",
+        "timestamp": 1526463885000,
+        "status": "complete",
+        "gas_price": "5000000000",
+        "gas_used": null,
+        "block_number": "2327073",
+        "chain_id": "1409"
+    }
+  }
+}';
 
 
+// -------------
+// Transfer List
+// -------------
+# SUCCESS
+$sample['transfer_list_success'] =
+'{
+  "success": true,
+  "data": {
+    "result_type": "transfers",
+    "transfers": [
+      {
+        "id": "2c66960e-0380-4f7b-8f41-c344d44ab3d4",
+        "from_address": "0xd8f38f893868288fb8408b8Cb9e0cC0061B25e93",
+        "to_address": "0xd2b789293674faEE51bEb2d0338d15401dEbfdE3",
+        "amount": "1",
+        "transaction_hash": "0x068bd88d9ac7818552232fff7d9be5069c9078f8402cc50d352cbb69bde02ed1",
+        "timestamp": 1526463885000,
+        "status": "complete",
+        "gas_price": "5000000000",
+        "gas_used": null,
+        "block_number": "2327073",
+        "chain_id": "1409"
+      },
+      {
+        "id": "cee672d6-bd9f-4f41-a18c-81b651ea9393",
+        "from_address": "0xd8f38f893868288fb8408b8Cb9e0cC0061B25e93",
+        "to_address": "0x3266b53987a77e7f1adf84230e817e04e59c9726",
+        "amount": "12",
+        "transaction_hash": "0xbc3f502c4e8d074ce2884242de235cc5e6fd378646ee1f62ba16a48902f458a8",
+        "timestamp": 1526462120000,
+        "status": "complete",
+        "gas_price": "5000000000",
+        "gas_used": null,
+        "block_number": "2326190",
+        "chain_id": "1409"
+      }
+    ],
+    "meta": {
+      "next_page_payload": {
+        "order_by": "id",
+        "order": "desc",
+        "limit": 2,
+        "page_no": 2
+      }
+    }
+  }
+}';
+# FAILURE
+$sample['transfer_list_failed'] =
+'{
+  "success": false,
+  "err": {
+    "code": "UNAUTHORIZED",
+    "msg": "We could not authenticate the request. Please review your credentials and authentication method.",
+    "error_data": [
+
+    ],
+    "internal_id": "a_1"
+  }
+}';
+
+
+// -------------------
+// Display Sample Data
+// -------------------
 // maybe display the sample data as arrays
 if ( (isset($_GET['display'])) && ($_GET['display'] == 'yes') ) {
 	// decode the JSON sample data to an array
@@ -530,5 +657,3 @@ if ( (isset($_GET['display'])) && ($_GET['display'] == 'yes') ) {
 	// display sample data
 	print_r($sampledata);
 }
-
-
