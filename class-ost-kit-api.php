@@ -4,8 +4,8 @@
 // === OST KIT alpha API ===
 // === PHP Wrapper Class ===
 // =========================
-// ===== Version 100.2 =====
-// == rev 2 for API 1.0.0 ==
+// ===== Version 100.3 =====
+// == rev 3 for API 1.0.0 ==
 // =========================
 //
 // OST KITa API PHP Wrapper Class
@@ -44,7 +44,7 @@
 // === Debugging ===
 // OST_KIT_DEBUG_LOG 		debug_log		Optional	boolean			true
 // OST_KIT_DEBUG_PATH 		debug_path		Optional	string			/class-file-path/api-debug.log
-// OST_KIT_DEBUG_DISPLAY	debug_display 	Optional boolean			false
+// OST_KIT_DEBUG_DISPLAY	debug_display 	Optional	boolean			false
 // ---------------------------------------------------------------------------------------
 
 # Important OST Kit Alpha Note for Transaction Execution
@@ -53,17 +53,21 @@
 # As a result you must query /transactions/{id} for successful completion of the transaction."
 
 # === Development TODOs ===
-# * Transfer API Endpoints
-# - HTTP Error Code Handling
-# - Optional filters (user_list, airdrop_list, action_list, transaction_list)
-# - transaction_execute: check action kind if company UUID not specified
+# - More HTTP Response Error Code Handling
+# - transaction_execute: check action kind if company UUID is not explicitly specified
 
 # === API Test List ===
-# * changing arbitrary_commission switch fails for action_edit !
-# - whether API can handle both ',' and ', ' delimiting (ie. of user IDs)
-# - if arbitrary_commission a required argument for user_to_user actions
-# - check decimal value accuracy for commission_percent
-# - how long to sleep between transaction execute and status
+# * test all optional filters for list queries (user, airdrop, action, transaction, transfer)
+# - airdrop_drop: whether API can handle both ',' and ', ' delimiting of user IDs
+# - action_create: check if arbitrary_commission is a required argument for user_to_user actions
+# - action_create: check decimal value accuracy level for commission_percent
+# - transaction_execute: how long to sleep between transaction execute and status
+
+# === Mini History ===
+# 100.3: added transfer endpoints and optional filters
+# 100.2: cleaned public version for API v1.0.0
+# 100.1: working development version for API v1.0.0
+# 092.1: initial dev/public version for API v0.9.2
 
 
 // ---------------------------
@@ -279,6 +283,10 @@ if (!class_exists('OST_Query')) {
 		# transaction_get
 		# transaction_list
 		# transactions_list
+		# = TRANSFERS =
+		# transfer_create
+		# transfer_get
+		# transfer_list
 
 		// Switch Endpoint to Send Query
 		// -----------------------------
@@ -408,7 +416,7 @@ if (!class_exists('OST_Query')) {
 			case 'status_transaction':
 			case 'get_transaction':
 			case 'transaction_get':
-				# required arguments: transaction_uuids (array!)
+				# required arguments: id
 				$this->response = $this->transaction_get($args); return;
 			case '/transaction-types/list':
 			case 'list_transactions':
@@ -419,6 +427,27 @@ if (!class_exists('OST_Query')) {
 			case 'list_all_transactions':
 			case 'transactions_list':
 				$this->response = $this->transactions_list($args); return;
+
+			// TRANSFERS
+			// ---------
+			case '/transfers/create':
+			case 'create_transfer':
+			case 'transfer_create':
+				# required arguments: to_address, amount
+				$this->response = $this->transfer_create($args); return;
+			case '/transfers/get':
+			case 'get_transfer':
+			case 'transfer_get':
+				# required argument: id
+				$this->response = $this->transfer_get($args); return;
+			case '/transfers/list':
+			case 'transfer_list':
+				# required arguments: page_no
+				# optional arguments: order(asc/desc), limit
+				$this->response = $this->transfer_list($args); return;
+			case 'list_all_transfers':
+			case 'transfers_list':
+				$this->response = $this->transfers_list($args); return;
 
 		}
 
@@ -458,6 +487,28 @@ if (!class_exists('OST_Query')) {
 		}
 
 		return $name;
+	}
+
+	// --------------------
+	// Validate Hex Address
+	// --------------------
+	// 100.3: added for create transfer endpoint
+	function validate_address($address) {
+
+		// check the address length is 42 (0x and 40 characters)
+		if (strlen($address) != 42) {return false;}
+
+		// require an 0x prefix
+		if (substr($address, 0, 2) != '0x') {return false;}
+
+		// now strip the 0x prefix
+		$hexaddress = substr($address, 2, strlen($address));
+
+		// check the remainder is hexadecimal
+		if (!ctype_xdigit($hexaddress)) {return false;}
+
+		// all good here
+		return true;
 	}
 
 	// -------------
@@ -519,9 +570,9 @@ if (!class_exists('OST_Query')) {
 	}
 
 
-	# ------------------
-	# API USER ENDPOINTS
-	# ------------------
+	# --------------
+	# USER ENDPOINTS
+	# --------------
 
 	// -----------
 	// Create User
@@ -608,6 +659,11 @@ if (!class_exists('OST_Query')) {
 
 	}
 
+	// ---------
+	// Get Users
+	// ---------
+	// TODO: get multiple users using user_list filter_options parameter ?
+
 	// ----------
 	// List Users
 	// ----------
@@ -674,9 +730,14 @@ if (!class_exists('OST_Query')) {
 			}
 		}
 
-		// TODO: Optional Filters
-		// ----------------------
-		// $args['optional__filters'] ...
+		// Optional Filters
+		// ----------------
+
+		# LIST FILTER	| DESCRIPTION 	| DEFINITION
+		# --------------+---------------+-----------
+		# id			| user ids		| 'id="3b679b8b-b56d-48e5-bbbe-7397899c8ca6, d1c0be68-30bd-4b06-af73-7da110dc62da"'
+
+		if (isset($args['filters']['id'])) {$params['filters']['id'] = $args['filters']['id'];}
 
 
 		// bug out if there were errors
@@ -697,59 +758,13 @@ if (!class_exists('OST_Query')) {
 
 	}
 
-	// ---------
-	// Get Users
-	// ---------
-	// TODO: get multiple users using filter__options parameter
-
-
 	// --------------
 	// List All Users
 	// --------------
 	// loop all list_user pages
 	function users_list($args) {
 
-		if (!isset($args['page_no'])) {$args['page_no'] = 1;}
-		$args['limit'] = $this->per_page;
-		$userlist = array();
-
-		while ($args['page_no'] != '') {
-
-			$result = $this->user_list($args);
-			if ($this->result_format == 'json') {$result = json_decode($result, true);}
-
-			$success = false;
-			if ($result && isset($result['success'])) {
-				if ($result['success'] && ($result['data']['result_type'] == 'users')) {
-					$data = $result['data']; $success = true;
-				}
-			}
-			// rest and try again in case network is glitching
-			if (!$success) {
-				sleep(1); $result = $this->user_list($args);
-				if ($this->result_format == 'json') {$result = json_decode($result, true);}
-			}
-
-			$args['page_no'] = ''; // reset to maybe finish looping
-			if ($result && isset($result['success'])) {
-				if ($result['success'] && ($result['data']['result_type'] == 'users')) {
-					$data = $result['data']; $success = true;
-				}
-			}
-			if ($success) {
-				if (isset($data['meta']['next_page_payload']['page_no'])) {
-					$args['page_no'] = $data['meta']['next_page_payload']['page_no'];
-				}
-				if (isset($data['users'])) {
-					foreach ($data['users'] as $user) {$userlist[] = $user;}
-				}
-			} else {
-				$this->debug_log("Error! Could not retrieve user list.", $result); return false;
-			}
-		}
-
-		if ($this->result_format == 'json') {return json_encode($userlist);}
-		else {return $userlist;}
+		return $this->list_all('users', $args);
 
 	}
 
@@ -927,9 +942,19 @@ if (!class_exists('OST_Query')) {
 			}
 		}
 
-		// TODO: Optional Filters
-		// ----------------------
-		// $args['optional__filters'] ...
+		// Optional Filters
+		// ----------------
+
+		# LIST FILTER		| DESCRIPTION
+		# ------------------+------------
+		# id				| Airdrop ids
+		#					| Example: 'id="bc6dc9e1-6e62-4032-8862-6f664d8d7541, 94543988-9fa6-4d0a-8a9f-d65d345f6175"'
+		# current_status	| indicates the stage at which the executed airdrop is in.
+		#					| Example: 'current_status="complete, pending"'
+
+		if (isset($args['filters']['id'])) {$params['filters']['id'] = $args['filters']['id'];}
+		if (isset($args['filters']['current_status'])) {$params['filters']['current_status'] = $args['filters']['current_status'];}
+
 
 		// bug out if there were errors
 		if ($this->errors) {return false;}
@@ -949,47 +974,7 @@ if (!class_exists('OST_Query')) {
 	// loop all airdrop_list pages
 	function airdrops_list($args) {
 
-		if (!isset($args['page_no'])) {$args['page_no'] = 1;}
-		$args['limit'] = $this->per_page;
-		$airdroplist = array();
-
-		while ($args['page_no'] != '') {
-
-			$result = $this->airdrop_list($args);
-			if ($this->result_format == 'json') {$result = json_decode($result, true);}
-
-			$success = false;
-			if ($result && isset($result['success'])) {
-				if ($result['success'] && ($result['data']['result_type'] == 'airdrops')) {
-					$data = $result['data']; $success = true;
-				}
-			}
-			// rest and try again in case network is glitching
-			if (!$success) {
-				sleep(1); $result = $this->airdrop_list($args);
-				if ($this->result_format == 'json') {$result = json_decode($result, true);}
-			}
-			if ($result && isset($result['success'])) {
-				if ($result['success'] && ($result['data']['result_type'] == 'airdrops')) {
-					$data = $result['data']; $success = true;
-				}
-			}
-
-			$args['page_no'] = ''; // reset to maybe finish looping
-			if ($success) {
-				if (isset($data['meta']['next_page_payload']['page_no'])) {
-					$args['page_no'] = $data['meta']['next_page_payload']['page_no'];
-				}
-				if (isset($data['airdrops'])) {
-					foreach ($data['airdrops'] as $airdrop) {$airdroplist[] = $airdrop;}
-				}
-			} else {
-				$this->debug_log("Error! Could not retrieve airdrop list.", $result); return false;
-			}
-		}
-
-		if ($this->result_format == 'json') {return json_encode($airdroplist);}
-		else {return $airdroplist;}
+		return $this->list_all('airdrops', $args);
 
 	}
 
@@ -1301,9 +1286,25 @@ if (!class_exists('OST_Query')) {
 			}
 		}
 
-		// TODO: Handle Optional Filters
-		// ----------------------=------
-		// $args['optional__filters']
+		// Optional Filters
+		// ----------------
+
+		# LIST FILTER		| DESCRIPTION
+		# ------------------+-----------------------------
+		# id				| Action ids
+		#					| Example: 'id="20346, 20346"'
+		# name				| names of the action
+		# 					| Example: 'name="Like, Upvote"'
+		# kind				| the kind of the action set during the creation of the action
+		#					| 'kind="user_to_user"'
+		# arbitrary_amount	| actions where the amount is set during creation or provided at execution
+		#					| Example: 'arbitrary_amount= false'
+
+		if (isset($args['filters']['id'])) {$params['filters']['id'] = $args['filters']['id'];}
+		if (isset($args['filters']['name'])) {$params['filters']['name'] = $args['filters']['name'];}
+		if (isset($args['filters']['kind'])) {$params['filters']['kind'] = $args['filters']['kind'];}
+		if (isset($args['filters']['arbitrary_amount'])) {$params['filters']['arbitrary_amount'] = $args['filters']['arbitrary_amount'];}
+
 
 		// bug out if there were errors
 		if ($this->errors) {return false;}
@@ -1324,49 +1325,7 @@ if (!class_exists('OST_Query')) {
 	// -----------------
 	// loop all action_list pages
 	function actions_list($args) {
-
-		if (!isset($args['page_no'])) {$args['page_no'] = 1;}
-		$args['limit'] = $this->per_page;
-		$actionlist = array();
-
-		while ($args['page_no'] != '') {
-
-			$result = $this->action_list($args);
-			if ($this->result_format == 'json') {$result = json_decode($result, true);}
-
-			$success = false;
-			if ($result && isset($result['success'])) {
-				if ($result['success'] && ($result['data']['result_type'] == 'actions')) {
-					$data = $result['data']; $success = true;
-				}
-			}
-			// rest and try again in case network is glitching
-			if (!$success) {
-				sleep(1); $result = $this->action_list($args);
-				if ($this->result_format == 'json') {$result = json_decode($result, true);}
-			}
-			if ($result && isset($result['success'])) {
-				if ($result['success'] && ($result['data']['result_type'] == 'actions')) {
-					$data = $result['data']; $success = true;
-				}
-			}
-
-			$args['page_no'] = ''; // reset to maybe finish looping
-			if ($success) {
-				if (isset($data['meta']['next_page_payload']['page_no'])) {
-					$args['page_no'] = $data['meta']['next_page_payload']['page_no'];
-				}
-				if (isset($data['actions'])) {
-					foreach ($data['actions'] as $action) {$actionlist[] = $action;}
-				}
-			} else {
-				$this->debug_log("Error! Could not retrieve action list.", $result); return false;
-			}
-		}
-
-		if ($this->result_format == 'json') {return json_encode($actionlist);}
-		else {return $actionlist;}
-
+		return $this->list_all('actions', $args);
 	}
 
 
@@ -1505,8 +1464,9 @@ if (!class_exists('OST_Query')) {
 
 			// maybe set OST view url for the transaction_hash
 			if ($data['data']['transaction']['transaction_hash']) {
-				$data['view_url'] = "https://view.ost.com/chain-id/".$this->chain_id;
-				$data['view_url'] .= "/transaction/".$data['data']['transaction']['transaction_hash'];
+				// 100.3: set view_url as a data subkey
+				$data['data']['view_url'] = "https://view.ost.com/chain-id/".$this->chain_id;
+				$data['data']['view_url'] .= "/transaction/".$data['data']['transaction']['transaction_hash'];
 			}
 		}
 
@@ -1527,7 +1487,7 @@ if (!class_exists('OST_Query')) {
 		# Input Parameter	| Type		| Description
 		# ------------------+-----------+----------------------------
 		# page_no			| number	| page number (starts from 1)
-		# order_by			| string	|order the list by when the transaction was created (default) . Can only be ordered by transaction creation date.
+		# order_by			| string	| order the list by when the transaction was created (default) . Can only be ordered by transaction creation date.
 		# order				| string	| orders the list in 'desc' (default). Accepts value 'asc' to order in ascending order.
 		# limit				| number	| limits the number of action objects to be sent in one request. Possible Values Min 1, Max 100, Default 10.
 
@@ -1560,10 +1520,15 @@ if (!class_exists('OST_Query')) {
 			}
 		}
 
+		// Optional Filters
+		// ----------------
 
-		// TODO: Handle Optional Filters
-		// ----------------------=------
-		// $args['optional__filters']
+		# LIST FILTER	| DESCRIPTION		| EXAMPLE
+		# --------------+-------------------+-------------------------------------------
+		# id			| Transaction ids	| 'id="e1f95fcb-5853-453a-a9b3-d4f7a38d5beb, e7800825-fd24-4574-b7a6-06472ca1ef9d"'
+
+		if (isset($args['filters']['id'])) {$params['filters']['id'] = $args['filters']['id'];}
+
 
 		// bug out if there were errors
 		if ($this->errors) {return false;}
@@ -1584,19 +1549,196 @@ if (!class_exists('OST_Query')) {
 	// --------------------
 	// loop all transaction_list pages
 	function transactions_list($args) {
+		return $this->list_all('transactions', $args);
+	}
+
+
+	# ------------------ #
+	# TRANSFER ENDPOINTS #
+	# ------------------ #
+
+	// ---------------
+	// Create Transfer
+	// ---------------
+	# /transfers/ (POST)
+	function transfer_create($args) {
+
+		# PARAMETER			| TYPE		| DEFINITION
+		# ------------------+-----------+-----------------------------------------------------------
+		# to_address		| hexstring	| (mandatory) public address to which to transfer OSTa Prime
+		# amount			| number	| (mandatory) amount of OSTa Prime to transfer in Wei; should be between 0 and 10^20, exclusive
+
+		if (!isset($args['to_address'])) {
+			$this->debug_log("Failed! Create Transfer Endpoint requires to_address.");
+		} else {
+			// validate hexstring for transfer to_address
+			$validate = $this->validate_address($args['to_address']);
+			if ($validate) {$params['to_address'] = $args['to_address'];}
+			else {$this->debug_log("Failed! Transfer Endpoint to_address is not valid!");}
+		}
+
+		if (!isset($args['amount'])) {
+			$this->debug_log("Failed! Create Transfer Endpoint requires amount.");
+		} else {$params['amount'] = $args['amount'];}
+
+		// bug out if there were errors
+		if ($this->errors) {return false;}
+
+		// Send Create Transfer Query to API
+		// ---------------------------------
+		$data = $this->send_query('/transfers/', $parameters, 'post');
+		if ($this->result_format == 'array') {$data = json_decode($data, true);}
+		return $data;
+
+		# For calls to /transfers, data.result_type is the string "transfer"
+		# and data.transfer is an object containing the attributes of the transfer.
+
+		# PARAMETER			| TYPE				| DEFINITION
+		# ------------------+-------------------+ ----------------------------------
+		# id				| string			| identifier for the transfer object
+		# from_address		| string			| token economy reserve address that is controlled by OST KIT? from which OST? Prime is transferred
+		# to_address		| string			| address to which to transfer OST? Prime
+		# amount			| string<number>	| amount of OST? Prime to transfer in Wei
+		# transaction_hash	| string			| the generated transaction hash (null, initially)
+		# timestamp			| number			| epoch time in milliseconds of current time
+		# status			| string			| the execution status of the transfer: "processing", "failed" or "complete"
+		# gas_price			| string<number>	| value of the gas utilized for the transfer
+		# gas_used			| string			| (optional) hexadecimal value of the gas used to execute the transfer (null, initially)
+		# block_number		| string<number>	| (optional) the block on the chain in which the transfer was included (null, initially)
+		# chain_id			| string<number>	| the identifier of the chain to which the transfer transaction was sent
+
+	}
+
+	// ------------
+	// Get Transfer
+	// ------------
+	# /transfers/{$id} (GET)
+	function transfer_get($args) {
+
+		# Input Parameter		| Type		| Description
+		# ----------------------+-----------+--------------------------------------------------------------
+		# id					| string	|  unique identifier returned during the creation of a transfer
+
+		if (!isset($args['id'])) {
+			$this->debug_log("Failed! Get Transfer Endpoint requires an id parameter.");
+		}
+
+		// bug out if there were errors
+		if ($this->errors) {return false;}
+
+		// Send Get Transfer Query to API
+		// ------------------------------
+		$data = $this->send_query('/transactions/'.$args['id'], array(), 'get');
+		if ($this->result_format == 'array') {$data = json_decode($data, true);}
+		return $data;
+
+		# For calls to /transfers/{id}, data.result_type is the string "transfer"
+		# and data.transfer is an object containing the attributes of the transfer.
+		# (see returned object data above for Create Transfer.)
+
+	}
+
+	// -------------
+	// Transfer List
+	// -------------
+	# /transfers/ (GET)
+	function transfer_list($args) {
+
+		# Input Parameter	| Type		| Description
+		# ------------------+-----------+----------------------------
+		# page_no			| number	| page number (starts from 1)
+		# order_by			| string	| order the list by when the transaction was created (default) . Can only be ordered by transaction creation date.
+		# order				| string	| orders the list in 'desc' (default). Accepts value 'asc' to order in ascending order.
+		# limit				| number	| limits the number of action objects to be sent in one request. Possible Values Min 1, Max 100, Default 10.
+
+		// Page Number (required)
+		// ----------------------
+		if (!isset($args['page_no'])) {$this->debug_log("Failed! List Transfers Endpoint requires page number.");}
+		$page_no = abs(intval($args['page_no']));
+		if ($page_no < 1) {$this->debug_log("Failed! List Transactions page number must be 1 or over.");}
+		else {$parameters['page_no'] = $args['page_no'];}
+
+		// Order By
+		// --------
+		// TODO: find out order_by parameters for transfer_list ?
+
+		// Order
+		// -----
+		if (isset($args['order'])) {
+			if ( ($args['order'] != 'asc') && ($args['order'] != 'desc') ) {
+				$this->debug_log("Warning! List Transfers Endpoint incorrect 'order' Parameter value.", $args['order']);
+			} else {$parameters['order'] = $args['order'];}
+		}
+
+		// Limit
+		// -----
+		if (isset($args['limit'])) {
+			$limit = (int)$args['limit'];
+			if ($limit > 0) {
+				if ($limit > 100) {$limit = 100;}
+				$parameters['limit'] = $limit;
+			}
+		}
+
+		// Optional Filters
+		// ----------------
+
+		# LIST FILTER	| DESCRIPTION	| EXAMPLE
+		# --------------+---------------+-------------------------------------------
+		# id			| Transfer ids	| 'id="2c66960e-0380-4f7b-8f41-c344d44ab3d4, cee672d6-bd9f-4f41-a18c-81b651ea9393"'
+
+		if (isset($args['filters']['id'])) {$params['filters']['id'] = $args['filters']['id'];}
+
+
+		// bug out if there were errors
+		if ($this->errors) {return false;}
+
+		// Send List Transfers Query to API
+		// --------------------------------
+		$data = $this->send_query('/transfers/', $parameters, 'get');
+		if ($this->result_format == 'array') {$data = json_decode($data, true);}
+		return $data;
+
+		# On calling /transfers, data.result_type is the string "transfers"
+		# and data.transfers is an object containing an array of transfer objects.
+		# (see returned object data above for Create Transfer.)
+
+	}
+
+	// ------------------
+	// List All Transfers
+	// ------------------
+	function transfers_list($args) {
+
+		return $this->list_all('transfers', $args);
+
+	}
+
+
+	# -------------------- #
+	# ABSTRACTED FUNCTIONS #
+	# -------------------- #
+
+	// ---------------------------------
+	// List All Data for a List Endpoint
+	// ---------------------------------
+	// 100.3: common abstracted function for all list endpoints
+	function list_all($endpoint, $args) {
 
 		if (!isset($args['page_no'])) {$args['page_no'] = 1;}
-		// $args['limit'] = $this->per_page;
+		$args['limit'] = $this->per_page;
 		$args['limit'] = 10;
 		$actionlist = array();
 
 		while ($args['page_no'] != '') {
 
-			// echo "PAGE NUMBER: ".$args['page_no'].PHP_EOL;
+			// retrieve list depending on endpoint
+			if ($endpoint == 'users') {$result = $this->user_list($args);}
+			elseif ($endpoint == 'airdrops') {$result = $this->airdrop_list($args);}
+			elseif ($endpoint == 'actions') {$result = $this->action_list($args);}
+			elseif ($endpoint == 'transactions') {$result = $this->transaction_list($args);}
+			elseif ($endpoint == 'transfers') {$result = $this->transfer_list($args);}
 
-			if ($args['page_no'] > 3) {exit;}
-
-			$result = $this->transaction_list($args);
 			if ($this->result_format == 'json') {$result = json_decode($result, true);}
 
 			$success = false;
@@ -1607,32 +1749,45 @@ if (!class_exists('OST_Query')) {
 			}
 			// rest and try again in case network is glitching
 			if (!$success) {
-				sleep(1); $result = $this->transaction_list($args);
+
+				sleep(1);
+
+				// retrieve list depending on endpoint
+				if ($endpoint == 'users') {$result = $this->user_list($args);}
+				elseif ($endpoint == 'airdrops') {$result = $this->airdrop_list($args);}
+				elseif ($endpoint == 'actions') {$result = $this->action_list($args);}
+				elseif ($endpoint == 'transactions') {$result = $this->transaction_list($args);}
+				elseif ($endpoint == 'transfers') {$result = $this->transfer_list($args);}
+
 				if ($this->result_format == 'json') {$result = json_decode($result, true);}
 			}
 			if ($result && isset($result['success'])) {
-				if ($result['success'] && ($result['data']['result_type'] == 'transactions')) {
+				if ($result['success'] && ($result['data']['result_type'] == $endpoint)) {
 					$data = $result['data']; $success = true;
 				}
 			}
 
-			$args['page_no'] = ''; // reset to maybe finish looping
+			// reset page number to maybe finish looping
+			$args['page_no'] = '';
+
+			// check for next page number in meta
 			if ($success) {
 				if (isset($data['meta']['next_page_payload']['page_no'])) {
 					$args['page_no'] = $data['meta']['next_page_payload']['page_no'];
 				}
-				if (isset($data['tranactions'])) {
-					foreach ($data['transactions'] as $transaction) {$transactionlist[] = $transaction;}
+				if (isset($data[$endpoint])) {
+					foreach ($data[$endpoint] as $record) {$recordlist[] = $record;}
 				}
 			} else {
-				$this->debug_log("Error! Could not retrieve transaction list.", $result); return false;
+				$this->debug_log("Error! Could not retrieve ".$endpoint." list.", $result); return false;
 			}
 		}
 
-		if ($this->result_format == 'json') {return json_encode($transactionlist);}
-		else {return $transactionlist;}
+		if ($this->result_format == 'json') {return json_encode($recordlist);}
+		else {return $recordlist;}
 
 	}
+
 
 	# ------------------- #
 	# API QUERY FUNCTIONS #
@@ -1658,6 +1813,24 @@ if (!class_exists('OST_Query')) {
 
 		$parameters['api_key'] = $this->api_key;
 		$parameters['request_timestamp'] = time();
+
+		// 100.3: handle optional filter parameters
+		if (isset($parameters['filters'])) {
+			$filters = $parameters['filters'];
+			if (is_array($filters) && (count($filters) > 0)) {
+				foreach ($filters as $key => $value) {
+					if (is_string($value)) {$parameters[$key] = '"'.$value.'"';}
+					elseif (is_array($value)) {
+						$valuestring = implode(',', $value);
+						$parameters[$key] = '"'.$valuestring.'"';
+					}
+				}
+			}
+			// ensure filters parameter is not set directly
+			unset($parameters['filters']);
+		}
+
+		// alphabetically sort the parameters
 		ksort($parameters);
 
         if ($method == 'post') {
@@ -1741,6 +1914,13 @@ if (!class_exists('OST_Query')) {
 
 		$contents = curl_exec($ch);
 		$httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+		// 100.3: sleep and retry on internal server error
+		if ($httpcode == 500) {
+			sleep(3); $contents = curl_exec($ch);
+			$httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		}
+
 		$header = curl_getinfo($ch);
 		$errorno = curl_errno($ch);
 		$error = curl_error($ch);
@@ -1842,8 +2022,7 @@ global $ost_kit_args;
 # /token
 if (!function_exists('ost_kit_token_get')) {
  function ost_kit_token_get() {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	$args['endpoint'] = 'token_get';
 	$query = new OST_Query($args);
 	return $query->response;
@@ -1861,8 +2040,7 @@ if (!function_exists('ost_kit_token_get')) {
 # /users/ (POST)
 if (!function_exists('ost_kit_user_create')) {
  function ost_kit_user_create($name) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	$args['endpoint'] = 'user_create';
 	$args['name'] = $name;
 	$query = new OST_Query($args);
@@ -1876,8 +2054,7 @@ if (!function_exists('ost_kit_user_create')) {
 # /users/{id} (GET)
 if (!function_exists('ost_kit_user_get')) {
  function ost_kit_user_get($id) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	$args['endpoint'] = 'user_get';
 	$args['id'] = $id;
 	$query = new OST_Query($args);
@@ -1891,8 +2068,7 @@ if (!function_exists('ost_kit_user_get')) {
 # /users/{id} (POST)
 if (!function_exists('ost_kit_user_edit')) {
  function ost_kit_user_edit($id, $name) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	$args['endpoint'] = 'user_edit';
 	$args['id'] = $id;
 	$args['name'] = $name;
@@ -1912,9 +2088,8 @@ if (!function_exists('ost_kit_user_edit')) {
 // retrieve user list page
 # /users/ (GET)
 if (!function_exists('ost_kit_user_list')) {
- function ost_kit_user_list($page_no=null, $airdropped=null, $order_by=null, $order=null, $limit=null) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ function ost_kit_user_list($page_no=null, $airdropped=null, $order_by=null, $order=null, $limit=null, $filters=null) {
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'list_users';
 	if (!is_null($page_no)) {$args['page_no'] = $page_no;}
@@ -1924,7 +2099,7 @@ if (!function_exists('ost_kit_user_list')) {
 	if (!is_null($order_by)) {$args['orderby'] = $order_by;}
 	if (!is_null($order)) {$args['order'] = $order;}
 	if (!is_null($limit)) {$args['limit'] = $limit;}
-	// if ($filters) {$args['optional__filters'] = $filter;}
+	if (!is_null($filters)) {$args['filters'] = $filters;}
 	$query = new OST_Query($args);
 	return $query->response;
  }
@@ -1937,8 +2112,7 @@ if (!function_exists('ost_kit_user_list')) {
 if (!function_exists('ost_kit_users_list')) {
  function ost_kit_users_list($order_by=null, $order=null) {
  	set_time_limit(120);
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'users_list';
 	// optional arguments
@@ -1955,8 +2129,7 @@ if (!function_exists('ost_kit_users_list')) {
 // note: not an endpoint, returns balance from user_get
 if (!function_exists('ost_kit_user_balance')) {
  function ost_kit_user_balance($id) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'user_balance';
 	$args['uuid'] = $id;
@@ -1975,8 +2148,7 @@ if (!function_exists('ost_kit_user_balance')) {
 # /airdrops/ (POST)
 if (!function_exists('ost_kit_airdrop_drop')) {
  function ost_kit_airdrop_drop($amount, $airdropped=null, $user_ids=null) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'airdrop_drop';
 	$args['amount'] = $amount;
@@ -1994,8 +2166,7 @@ if (!function_exists('ost_kit_airdrop_drop')) {
 # /airdrops/{id} (GET)
 if (!function_exists('ost_kit_airdrop_get')) {
  function ost_kit_airdrop_get($id) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	$args['endpoint'] = 'airdrop_get';
 	$args['id'] = $id;
 	$query = new OST_Query($args);
@@ -2009,18 +2180,17 @@ if (!function_exists('ost_kit_airdrop_get')) {
 // retrieve airdrop list page
 # /airdrops/ (GET)
 if (!function_exists('ost_kit_airdrop_list')) {
- function ost_kit_airdrop_list($page_no=null, $order_by=null, $order=null, $limit=null) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ function ost_kit_airdrop_list($page_no=null, $order_by=null, $order=null, $limit=null, $filters=null) {
+ 	global $ost_kit_args; $args = $ost_kit_args;
  	// required arguments
 	$args['endpoint'] = 'airdrop_list';
 	if (!is_null($page_no)) {$args['page_no'] = $page_no;}
-	else {$args['page_no'] = '1';} // default to first page
+	else {$args['page_no'] = '1';}
 	// optional arguments
 	if (!is_null($order_by)) {$args['orderby'] = $order_by;}
 	if (!is_null($order)) {$args['order'] = $order;}
 	if (!is_null($limit)) {$args['limit'] = $limit;}
-	// if ($filters) {$args['optional__filters'] = $filters;}
+	if (!is_null($filters)) {$args['filters'] = $filters;}
 	$query = new OST_Query($args);
 	return $query->response;
  }
@@ -2033,8 +2203,7 @@ if (!function_exists('ost_kit_airdrop_list')) {
 if (!function_exists('ost_kit_airdrops_list')) {
  function ost_kit_airdrops_list($order_by=null, $order=null) {
  	set_time_limit(120);
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'airdrops_list';
 	// optional arguments
@@ -2055,8 +2224,7 @@ if (!function_exists('ost_kit_airdrops_list')) {
 # /actions (POST)
 if (!function_exists('ost_kit_action_create')) {
  function ost_kit_action_create($name, $kind, $currency, $arbitrary_amount=null, $amount=null, $arbitrary_commission=null, $commission_percent=null) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'create_action';
 	$args['name'] = $name;
@@ -2078,8 +2246,7 @@ if (!function_exists('ost_kit_action_create')) {
 # /actions/{id}
 if (!function_exists('ost_kit_action_get')) {
  function ost_kit_action_get($id) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'action_get';
 	$args['id'] = $id;
@@ -2094,8 +2261,7 @@ if (!function_exists('ost_kit_action_get')) {
 # /actions/{id} (POST)
 if (!function_exists('ost_kit_action_edit')) {
  function ost_kit_action_edit($id, $name=null, $kind=null, $currency=null, $arbitrary_amount=null, $amount=null, $arbitrary_commission=null, $commission_percent=null) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'action_edit';
 	$args['id'] = $id;
@@ -2118,18 +2284,17 @@ if (!function_exists('ost_kit_action_edit')) {
 // retrive action list page
 # /actions/ (GET)
 if (!function_exists('ost_kit_action_list')) {
- function ost_kit_action_list($page_no=null, $order_by=null, $order=null, $limit=null) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ function ost_kit_action_list($page_no=null, $order_by=null, $order=null, $limit=null, $filters=null) {
+ 	global $ost_kit_args; $args = $ost_kit_args;
  	// required arguments
 	$args['endpoint'] = 'action_list';
 	if (!is_null($page_no)) {$args['page_no'] = $page_no;}
-	else {$args['page_no'] = '1';} // default to first page
+	else {$args['page_no'] = '1';}
 	// optional arguments
 	if (!is_null($order_by)) {$args['orderby'] = $order_by;}
 	if (!is_null($order)) {$args['order'] = $order;}
 	if (!is_null($limit)) {$args['limit'] = $limit;}
-	// if ($filter) {$args['optional__filters'] = $filter;}
+	if (!is_null($filters)) {$args['filters'] = $filters;}
 	$query = new OST_Query($args);
 	return $query->response;
  }
@@ -2142,8 +2307,7 @@ if (!function_exists('ost_kit_action_list')) {
 if (!function_exists('ost_kit_actions_list')) {
  function ost_kit_actions_list($order_by=null, $order=null) {
  	set_time_limit(120);
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	$args['endpoint'] = 'actions_list';
 	// optional arguments
 	if (!is_null($order_by)) {$args['order_by'] = $order_by;}
@@ -2164,8 +2328,7 @@ if (!function_exists('ost_kit_actions_list')) {
 # /transactions execute (POST)
 if (!function_exists('ost_kit_transaction_execute')) {
  function ost_kit_transaction_execute($from_user_id, $to_user_id, $action_id, $amount=null, $commission_percent=null) {
-  	global $ost_kit_args;
-  	$args = $ost_kit_args;
+  	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'transaction_execute';
 	$args['from_user_id'] = $from_user_id;
@@ -2185,8 +2348,7 @@ if (!function_exists('ost_kit_transaction_execute')) {
 # /transactions get status (GET)
 if (!function_exists('ost_kit_transaction_get')) {
  function ost_kit_transaction_get($id) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	$args['endpoint'] = 'transaction_get';
 	$args['id'] = $id;
 	$query = new OST_Query($args);
@@ -2200,9 +2362,9 @@ if (!function_exists('ost_kit_transaction_get')) {
 // retrive transaction list page
 # /transactions/ (GET)
 if (!function_exists('ost_kit_transaction_list')) {
- function ost_kit_transaction_list($page_no=null, $order_by=null, $order=null, $limit=null) {
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ function ost_kit_transaction_list($page_no=null, $order_by=null, $order=null, $limit=null, $filters=null) {
+ 	global $ost_kit_args; $args = $ost_kit_args;
+	// required arguments
 	$args['endpoint'] = 'transaction_list';
 	if (!is_null($page_no)) {$args['page_no'] = $page_no;}
 	else {$args['page_no'] = '1';}
@@ -2210,7 +2372,7 @@ if (!function_exists('ost_kit_transaction_list')) {
 	if (!is_null($order_by)) {$args['order_by'] = $order_by;}
 	if (!is_null($order)) {$args['order'] = $order;}
 	if (!is_null($limit)) {$args['limit'] = $limit;}
-	// if ($filter) {$args['optional__filters'] = $filter;}
+	if (!is_null($filters)) {$args['filters'] = $filters;}
 	$query = new OST_Query($args);
 	return $query->response;
  }
@@ -2223,8 +2385,7 @@ if (!function_exists('ost_kit_transaction_list')) {
 if (!function_exists('ost_kit_transactions_list')) {
  function ost_kit_transactions_list($order_by=null, $order=null) {
  	set_time_limit(120);
- 	global $ost_kit_args;
- 	$args = $ost_kit_args;
+ 	global $ost_kit_args; $args = $ost_kit_args;
 	$args['endpoint'] = 'transactions_list';
 	// optional arguments
 	if (!is_null($order_by)) {$args['order_by'] = $order_by;}
@@ -2253,7 +2414,7 @@ if (!function_exists('ost_kit_transaction_process')) {
 			$data = $result['data'];
 
 			// TEST: how long to sleep here?
-			// or maybe sleep and check twice?
+			// or maybe sleep short, retry, sleep long?
 			sleep(5);
 
 			$id = $data['transaction']['id'];
@@ -2271,3 +2432,77 @@ if (!function_exists('ost_kit_transaction_process')) {
  }
 }
 
+
+// -----------------
+// === TRANSFERS ===
+// -----------------
+// 100.3: added transfer endpoints
+
+// ---------------
+// Create Transfer
+// ---------------
+# /transfers/ (POST)
+if (!function_exists('ost_kit_transfer_create')) {
+ function ost_kit_transfer_create($to_address, $amount) {
+ 	global $ost_kit_args; $args = $ost_kit_args;
+	$args['endpoint'] = 'transfer_get';
+	$args['toaddress'] = $to_address;
+	$args['amount'] = $amount;
+	$query = new OST_Query($args);
+	return $query->response;
+ }
+}
+
+// ------------
+// Get Transfer
+// ------------
+# /transfers/{id} (GET)
+if (!function_exists('ost_kit_transfer_get')) {
+ function ost_kit_transfer_get($id) {
+ 	global $ost_kit_args; $args = $ost_kit_args;
+	$args['endpoint'] = 'transfer_get';
+	$args['id'] = $id;
+	$query = new OST_Query($args);
+	return $query->response;
+ }
+}
+
+// -------------
+// Transfer List
+// -------------
+// /transfers/ (GET)
+if (!function_exists('ost_kit_transfer_list')) {
+ function ost_kit_transfer_list($page_no=null, $order_by=null, $order=null, $limit=null, $filters=null) {
+ 	global $ost_kit_args; $args = $ost_kit_args;
+	// required arguments
+	$args['endpoint'] = 'transfer_list';
+	if (!is_null($page_no)) {$args['page_no'] = $page_no;}
+	else {$args['page_no'] = '1';}
+	// optional arguments
+	if (!is_null($order_by)) {$args['order_by'] = $order_by;}
+	if (!is_null($order)) {$args['order'] = $order;}
+	if (!is_null($limit)) {$args['limit'] = $limit;}
+	if (!is_null($filters)) {$args['filters'] = $filters;}
+	$query = new OST_Query($args);
+	return $query->response;
+ }
+}
+
+// ------------------
+// List All Transfers
+// ------------------
+if (!function_exists('ost_kit_transfers_list')) {
+ function ost_kit_transfers_list($order_by=null, $order=null) {
+ 	set_time_limit(120);
+ 	global $ost_kit_args; $args = $ost_kit_args;
+	$args['endpoint'] = 'transfers_list';
+	// optional arguments
+	if (!is_null($order_by)) {$args['order_by'] = $order_by;}
+	if (!is_null($order)) {$args['order'] = $order;}
+	$query = new OST_Query($args);
+	return $query->response;
+ }
+}
+
+// ---------------------
+// ...and that's a wrap.
