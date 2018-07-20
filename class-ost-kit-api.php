@@ -8,7 +8,7 @@
 // == rev 1 for API 1.1.0 ==
 // =========================
 //
-// OST KITa API PHP Wrapper Class
+// OST KIT API PHP Wrapper Class
 // Copyright (C) 2018 Tony Hayes
 //
 // This program is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@
 // === API Details ===
 // OST_KIT_KEY				api_key			REQUIRED	string			n/a
 // OST_KIT_SECRET			api_secret		REQUIRED	string			n/a
-// OST_KIT_URL				api_url			Optional	URL				'https://sandboxapi.ost.com/v1'
+// OST_KIT_URL				api_url			Optional	URL				'https://playgroundapi.ost.com/v1.1'
 // OST_KIT_CHAINID			chain_id		Optional 	number			1409 (test network blockchain)
 // === Connection ===
 // OST_KIT_PORT				port			Optional	number			false
@@ -57,7 +57,8 @@
 # ? transaction_execute: check action kind if company UUID is not explicitly specified
 
 # === API Test List ===
-# * test all optional filters for list queries (user, airdrop, action, transaction, transfer)
+# - test transfer, user ledger and balance endpoints
+# - test all optional filters for list queries (user, airdrop, action, transaction, transfer)
 # - airdrop_drop: whether API can handle both ',' and ', ' delimiting of user IDs
 # - action_create: check if arbitrary_commission is a required argument for user_to_user actions
 # - action_create: check decimal value accuracy level for commission_percent
@@ -91,7 +92,7 @@ if (!class_exists('OST_Query')) {
 
 	// API URL
 	// -------
-	protected $api_url = 'https://playgroundapi.ost.com/v1';
+	protected $api_url = 'https://playgroundapi.ost.com/v1.1';
 
 	// Network Chain ID
 	// ----------------
