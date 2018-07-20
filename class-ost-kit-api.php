@@ -4,8 +4,8 @@
 // === OST KIT alpha API ===
 // === PHP Wrapper Class ===
 // =========================
-// ===== Version 100.3 =====
-// == rev 3 for API 1.0.0 ==
+// ===== Version 110.1 =====
+// == rev 1 for API 1.1.0 ==
 // =========================
 //
 // OST KITa API PHP Wrapper Class
@@ -54,7 +54,7 @@
 
 # === Development TODOs ===
 # - More HTTP Response Error Code Handling
-# - transaction_execute: check action kind if company UUID is not explicitly specified
+# ? transaction_execute: check action kind if company UUID is not explicitly specified
 
 # === API Test List ===
 # * test all optional filters for list queries (user, airdrop, action, transaction, transfer)
@@ -63,7 +63,8 @@
 # - action_create: check decimal value accuracy level for commission_percent
 # - transaction_execute: how long to sleep between transaction execute and status
 
-# === Mini History ===
+# === Mini Changelog ===
+# 110.1: added ledger and balance endpoints for API v1.1.0
 # 100.3: added transfer endpoints and optional filters
 # 100.2: cleaned public version for API v1.0.0
 # 100.1: working development version for API v1.0.0
@@ -283,6 +284,7 @@ if (!class_exists('OST_Query')) {
 		# transaction_get
 		# transaction_list
 		# transactions_list
+		# user_ledger
 		# = TRANSFERS =
 		# transfer_create
 		# transfer_get
@@ -332,7 +334,7 @@ if (!class_exists('OST_Query')) {
 			case '/users/balance':
 			case 'token_balance':
 			case 'user_balance':
-				# required argument: uuid
+				# required argument: id
 				$this->response = $this->user_balance($args); return;
 
 			// AIRDROPS
@@ -427,6 +429,12 @@ if (!class_exists('OST_Query')) {
 			case 'list_all_transactions':
 			case 'transactions_list':
 				$this->response = $this->transactions_list($args); return;
+			case 'ledger':
+			case 'user_transactions':
+			case 'user_ledger':
+				# required arguments: id, page_no
+				# optional arguments: order_by(creation_time), order(asc/desc), limit
+				$this->response = $this->user_ledger($args); return;
 
 			// TRANSFERS
 			// ---------
@@ -771,24 +779,37 @@ if (!class_exists('OST_Query')) {
 	// ------------------
 	// User Token Balance
 	// ------------------
-	// note: not an actual endpoint, just a shortcut method
+	// 110.1: use new balance endpoint
+	// note: now returns balance object instead of just token_balance integer
+	# /balances/{id} (GET)
 	function user_balance($args) {
 
-		// ensure we have a UUID to match with
+		// ensure we have an id to match with
 		if ( !isset($args['id']) || empty($args['id']) ) {
-			$this->debug_log("Error! Token balance requires id parameter.", $args); return false;
+			$this->debug_log("Error! Token Balance Endpoint requires id parameter.", $args); return false;
 		}
 
+		// [deprecate] old method via user_get endpoint
 		// make sure we get the userlist as an array here
-		$this->result_format = 'array';
-		$data = $this->user_get($args);
-
+		// $this->result_format = 'array';
+		// $data = $this->user_get($args);
 		// ensure we have a valid data
-		if ( (!$data) || (!is_array($data)) || (!isset($data['data']['user']['token_balance'])) ) {
-			$this->debug_log("Error! Could not retrieve user token balance.", $args); return false;
-		}
+		// if ( (!$data) || (!is_array($data)) || (!isset($data['data']['user']['token_balance'])) ) {
+		// 	$this->debug_log("Error! Could not retrieve user token balance.", $args); return false;
+		// }
+		// return $data['data']['user']['token_balance'];
 
-		return $data['data']['user']['token_balance'];
+		$data = $this->send_query('/balances/'.$args['id'], array(), 'get');
+		return $data;
+
+		// For api calls to /balances/{user_id} the data.result_type is the string "balance"
+		// and the key data.balance has a single element of the balance object with balance details of the user.
+
+		# PARAMETER				| TYPE			| DESCRIPTION
+		# ----------------------+---------------+--------------------------------------------
+		# available_balance		| string<float>	| current available balance of the user in BT (airdropped_balance + token_balance)
+		# airdropped_balance	| string<float>	| current balance of tokens that were airdropped to the user in BT
+		# token_balance			| string<float>	| current balance of tokens in BT that users have earned within your branded token economy by performing the respective actions you defined.
 
 	}
 
@@ -1552,6 +1573,67 @@ if (!class_exists('OST_Query')) {
 		return $this->list_all('transactions', $args);
 	}
 
+	// -----------
+	// User Ledger
+	// -----------
+	// 110.1: add user ledger endpoint
+	// /ledger/{id}
+	function user_ledger($args) {
+
+		// User ID (required)
+		// ------------------
+		if (!isset($args['id'])) {
+			$this->debug_log("Failed! Ledger Endpoint an id parameter.");
+		}
+
+		// Page Number (required)
+		// ----------------------
+		if (!isset($args['page_no'])) {$this->debug_log("Failed! User Ledger Endpoint requires page number.");}
+		$page_no = abs(intval($args['page_no']));
+		if ($page_no < 1) {$this->debug_log("Failed! User Ledger page number must be 1 or over.");}
+		else {$parameters['page_no'] = $args['page_no'];}
+
+		// Order By
+		// --------
+		// note: can only be ordered by creation date
+
+		// Order
+		// -----
+		if (isset($args['order'])) {
+			if ( ($args['order'] != 'asc') && ($args['order'] != 'desc') ) {
+				$this->debug_log("Warning! User Ledger Endpoint incorrect 'order' Parameter value.", $args['order']);
+			} else {$parameters['order'] = $args['order'];}
+		}
+
+		// Limit
+		// -----
+		if (isset($args['limit'])) {
+			$limit = (int)$args['limit'];
+			if ($limit > 0) {
+				if ($limit > 100) {$limit = 100;}
+				$parameters['limit'] = $limit;
+			}
+		}
+
+		// bug out if there were errors
+		if ($this->errors) {return false;}
+
+		// Send User Ledger Query to API
+		// -----------------------------
+		$data = $this->send_query('/ledger/'.$args['id'], array(), 'get');
+		if ($this->result_format == 'array') {$data = json_decode($data, true);}
+		return $data;
+
+	}
+
+	// ----------------
+	// All User Ledgers
+	// ----------------
+	// 110.1: get all user ledger pages
+	function user_ledgers($args) {
+		return $this->list_all('ledgers', $args);
+	}
+
 
 	# ------------------ #
 	# TRANSFER ENDPOINTS #
@@ -1709,9 +1791,7 @@ if (!class_exists('OST_Query')) {
 	// List All Transfers
 	// ------------------
 	function transfers_list($args) {
-
 		return $this->list_all('transfers', $args);
-
 	}
 
 
@@ -1738,6 +1818,7 @@ if (!class_exists('OST_Query')) {
 			elseif ($endpoint == 'actions') {$result = $this->action_list($args);}
 			elseif ($endpoint == 'transactions') {$result = $this->transaction_list($args);}
 			elseif ($endpoint == 'transfers') {$result = $this->transfer_list($args);}
+			elseif ($endpoint == 'ledgers') {$result = $this->user_ledger($args);}
 
 			if ($this->result_format == 'json') {$result = json_decode($result, true);}
 
@@ -2026,7 +2107,6 @@ if (!function_exists('ost_kit_token_get')) {
 	$args['endpoint'] = 'token_get';
 	$query = new OST_Query($args);
 	return $query->response;
-
  }
 }
 
@@ -2092,8 +2172,7 @@ if (!function_exists('ost_kit_user_list')) {
  	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'list_users';
-	if (!is_null($page_no)) {$args['page_no'] = $page_no;}
-	else {$args['page_no'] = 1;} // default to first page
+	if (!is_null($page_no)) {$args['page_no'] = $page_no;} else {$args['page_no'] = 1;}
 	// optional arguments
 	if (!is_null($airdropped)) {$args['airdropped'] = $airdropped;}
 	if (!is_null($order_by)) {$args['orderby'] = $order_by;}
@@ -2132,7 +2211,8 @@ if (!function_exists('ost_kit_user_balance')) {
  	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'user_balance';
-	$args['uuid'] = $id;
+	// 110.1: just use id not uuid
+	$args['id'] = $id;
 	$query = new OST_Query($args);
 	return $query->response;
  }
@@ -2184,8 +2264,7 @@ if (!function_exists('ost_kit_airdrop_list')) {
  	global $ost_kit_args; $args = $ost_kit_args;
  	// required arguments
 	$args['endpoint'] = 'airdrop_list';
-	if (!is_null($page_no)) {$args['page_no'] = $page_no;}
-	else {$args['page_no'] = '1';}
+	if (!is_null($page_no)) {$args['page_no'] = $page_no;} else {$args['page_no'] = '1';}
 	// optional arguments
 	if (!is_null($order_by)) {$args['orderby'] = $order_by;}
 	if (!is_null($order)) {$args['order'] = $order;}
@@ -2199,7 +2278,7 @@ if (!function_exists('ost_kit_airdrop_list')) {
 // -----------------
 // List All Airdrops
 // -----------------
-// retrive full airdrop list
+// retrieve full airdrop list
 if (!function_exists('ost_kit_airdrops_list')) {
  function ost_kit_airdrops_list($order_by=null, $order=null) {
  	set_time_limit(120);
@@ -2288,8 +2367,7 @@ if (!function_exists('ost_kit_action_list')) {
  	global $ost_kit_args; $args = $ost_kit_args;
  	// required arguments
 	$args['endpoint'] = 'action_list';
-	if (!is_null($page_no)) {$args['page_no'] = $page_no;}
-	else {$args['page_no'] = '1';}
+	if (!is_null($page_no)) {$args['page_no'] = $page_no;} else {$args['page_no'] = '1';}
 	// optional arguments
 	if (!is_null($order_by)) {$args['orderby'] = $order_by;}
 	if (!is_null($order)) {$args['order'] = $order;}
@@ -2366,8 +2444,7 @@ if (!function_exists('ost_kit_transaction_list')) {
  	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'transaction_list';
-	if (!is_null($page_no)) {$args['page_no'] = $page_no;}
-	else {$args['page_no'] = '1';}
+	if (!is_null($page_no)) {$args['page_no'] = $page_no;} else {$args['page_no'] = '1';}
 	// optional arguments
 	if (!is_null($order_by)) {$args['order_by'] = $order_by;}
 	if (!is_null($order)) {$args['order'] = $order;}
@@ -2395,6 +2472,44 @@ if (!function_exists('ost_kit_transactions_list')) {
  }
 }
 
+// -----------
+// User Ledger
+// -----------
+// 110.1: added ledger endpoint
+# /ledger/{id} (GET)
+if (!function_exists('ost_kit_user_ledger')) {
+ function ost_kit_user_ledger($id, $page_no=null, $order_by=null, $order=null, $limit=null, $filters=null) {
+ 	global $ost_kit_args; $args = $ost_kit_args;
+	// required arguments
+	$args['endpoint'] = 'user_ledger';
+	$args['id'] = $id;
+	if (!is_null($page_no)) {$args['page_no'] = $page_no;} else {$args['page_no'] = '1';}
+	// optional arguments
+	if (!is_null($order_by)) {$args['order_by'] = $order_by;}
+	if (!is_null($order)) {$args['order'] = $order;}
+	if (!is_null($limit)) {$args['limit'] = $limit;}
+	if (!is_null($filters)) {$args['filters'] = $filters;}
+	$query = new OST_Query($args);
+	return $query->response;
+ }
+}
+
+// ------------
+// User Ledgers
+// ------------
+// 110.1: added multi-ledger function
+if (!function_exists('ost_kit_user_ledgers')) {
+ function ost_kit_user_ledgers($order_by=null, $order=null) {
+ 	global $ost_kit_args; $args = $ost_kit_args;
+	// required arguments
+	$args['endpoint'] = 'user_ledgers';
+	// optional arguments
+	if (!is_null($order_by)) {$args['order_by'] = $order_by;}
+	if (!is_null($order)) {$args['order'] = $order;}
+	$query = new OST_Query($args);
+	return $query->response;
+ }
+}
 
 // ----------------------------
 // Process Complete Transaction
@@ -2476,8 +2591,7 @@ if (!function_exists('ost_kit_transfer_list')) {
  	global $ost_kit_args; $args = $ost_kit_args;
 	// required arguments
 	$args['endpoint'] = 'transfer_list';
-	if (!is_null($page_no)) {$args['page_no'] = $page_no;}
-	else {$args['page_no'] = '1';}
+	if (!is_null($page_no)) {$args['page_no'] = $page_no;} else {$args['page_no'] = '1';}
 	// optional arguments
 	if (!is_null($order_by)) {$args['order_by'] = $order_by;}
 	if (!is_null($order)) {$args['order'] = $order;}
