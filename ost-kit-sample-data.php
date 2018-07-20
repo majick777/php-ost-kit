@@ -164,6 +164,23 @@ $sample['list_users_success'] =
    }
 }';
 
+// ------------
+// User Balance
+// ------------
+# SUCCESS
+$sample['user_balance'] =
+'{
+  "success": true,
+  "data": {
+      "result_type": "balance",
+      "balance":  {
+         "available_balance": "14.243366506781137",
+         "airdropped_balance": "6.231683253390568746",
+         "token_balance": "8.011683253390568746"
+      }
+   }
+}';
+
 // ----------------------
 // Airdrop Drop Responses
 // ----------------------
@@ -561,6 +578,7 @@ $sample['transfer_create_failed'] =
 // Get Transfer
 // ------------
 # SUCCESS
+# note: airdropped_amount added in API v1.1
 $sample['transfer_get_success'] =
 '{
   "success": true,
@@ -578,6 +596,7 @@ $sample['transfer_get_success'] =
         "gas_used": null,
         "block_number": "2327073",
         "chain_id": "1409"
+        "airdropped_amount": "???",
     }
   }
 }';
@@ -642,6 +661,71 @@ $sample['transfer_list_failed'] =
     ],
     "internal_id": "a_1"
   }
+}';
+
+// ----------------
+// User Ledger List
+// ----------------
+# SUCCESS
+$sample['ledger_list_success'] =
+'{
+   "success": true,
+   "data": {
+      "result_type": "transactions",
+      "meta": {
+         "next_page_payload": {}
+      },
+      "transactions": [
+         {
+            "id": "24f6476d-fdec-4b79-b6ac-9b56c14baa1d",
+            "from_user_id": "54a4648d-5959-4b44-8d28-86b85428e785",
+            "to_user_id": "f5f9b061-b784-4ecd-b599-bc263860f539",
+            "transaction_hash": "0x5a78704ec17647f3cf1b024de9fa368edc52b07ed635fe462bfef7f4771da91e",
+            "action_id": 22613,
+            "timestamp": 1530107114601,
+            "status": "complete",
+            "gas_price": "1000000000",
+            "gas_used": "119952",
+            "transaction_fee": "0.000119952",
+            "block_number": 4142744,
+            "amount": "4.052205306455120373",
+            "commission_amount": "0.040522053064551203",
+            "airdropped_amount": "4.092727359519671576"
+         },
+         {
+            "id": "562d48f8-7261-4896-b804-6893f79ff1a9",
+            "from_user_id": "f5f9b061-b784-4ecd-b599-bc263860f539",
+            "to_user_id": "54a4648d-5959-4b44-8d28-86b85428e785",
+            "transaction_hash": "0x71b2545f3c81e93f021ac2cf0311840ecaf2ec00411fca76587aeb2bffb93484",
+            "action_id": 22613,
+            "timestamp": 1530107078785,
+            "status": "complete",
+            "gas_price": "1000000000",
+            "gas_used": "105080",
+            "transaction_fee": "0.00010508",
+            "block_number": 4142726,
+            "amount": "4.052205306455120373",
+            "commission_amount": "0.040522053064551203",
+            "airdropped_amount": "4.092727359519671576"
+         },
+         {
+            "id": "dfbf803e-a1ba-4410-a597-8ef846d69821",
+            "from_user_id": "f5f9b061-b784-4ecd-b599-bc263860f539",
+            "to_user_id": "54a4648d-5959-4b44-8d28-86b85428e785",
+            "transaction_hash": "0xea3dbf9639762522c95a0c7a8824f56ced22e737a02c594b9491d78a7158a311",
+            "action_id": 22613,
+            "timestamp": 1530107072130,
+            "status": "complete",
+            "gas_price": "1000000000",
+            "gas_used": "119952",
+            "transaction_fee": "0.000119952",
+            "block_number": 4142723,
+            "amount": "4.052205306455120373",
+            "commission_amount": "0.040522053064551203",
+            "airdropped_amount": "4.092727359519671576"
+         }
+      ]
+   }
 }';
 
 
